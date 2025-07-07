@@ -1,4 +1,29 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MathLingo Demo
+
+A gamified math learning application built with Next.js, featuring adaptive difficulty, XP rewards, and AI-powered problem generation.
+
+## Features
+
+- 🎮 **Gamified Learning**: XP points, hearts, streaks, and levels
+- 🧠 **AI-Powered Problems**: Dynamic problem generation using Claude AI
+- 📈 **Adaptive Difficulty**: Problems adjust based on learner's skill level
+- 💡 **Step-by-Step Explanations**: Detailed solutions for every problem
+- 🎯 **Real-time Feedback**: Immediate grading and feedback
+
+## Prerequisites
+
+- Node.js 18+ 
+- Anthropic API key
+
+## Environment Setup
+
+Create a `.env.local` file in the root directory with your Anthropic API key:
+
+```bash
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+```
+
+You can get an API key from [Anthropic's Console](https://console.anthropic.com/).
 
 ## Getting Started
 
