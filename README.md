@@ -1,61 +1,163 @@
 # MathLingo Demo
 
-A gamified math learning application built with Next.js, featuring adaptive difficulty, XP rewards, and AI-powered problem generation.
+An adaptive math learning platform that generates personalized math problems and provides instant feedback. Now with multiple question types!
 
 ## Features
 
-- 🎮 **Gamified Learning**: XP points, hearts, streaks, and levels
-- 🧠 **AI-Powered Problems**: Dynamic problem generation using Claude AI
-- 📈 **Adaptive Difficulty**: Problems adjust based on learner's skill level
-- 💡 **Step-by-Step Explanations**: Detailed solutions for every problem
-- 🎯 **Real-time Feedback**: Immediate grading and feedback
+### 🎯 Multiple Question Types
 
-## Prerequisites
+1. **Text Input Questions** - Traditional problems where students type their answers
+2. **Multiple Choice Questions** - Students select from 3 possible answers (A, B, C)
+3. **Drawing Questions** - Students upload images of handwritten math work, which gets processed using AI vision
 
-- Node.js 18+ 
-- Anthropic API key
+### 🧠 Adaptive Learning
 
-## Environment Setup
+- Difficulty adjusts based on student performance
+- Tracks problem history to personalize future questions
+- Gamified experience with XP, hearts, streaks, and levels
 
-Create a `.env.local` file in the root directory with your Anthropic API key:
+### 💬 Interactive Topic Discussion
 
-```bash
-ANTHROPIC_API_KEY=your_anthropic_api_key_here
-```
+- AI-powered conversation to understand student interests
+- Suggests relevant math topics
+- Personalized problem generation based on preferences
 
-You can get an API key from [Anthropic's Console](https://console.anthropic.com/).
+## Question Types in Detail
+
+### Text Input
+- Students type numerical or algebraic answers
+- Supports various formats (fractions, decimals, expressions)
+- Real-time validation and feedback
+
+### Multiple Choice
+- Three carefully crafted options (A, B, C)
+- One correct answer with detailed explanations
+- Visual feedback for selection
+
+### Drawing/Image Upload
+- Upload photos of handwritten math work
+- AI-powered OCR using Claude Vision
+- Automatic text extraction with manual editing capability
+- Perfect for complex equations and step-by-step work
+
+## Technology Stack
+
+- **Frontend**: Next.js 15, React 19, TypeScript
+- **UI**: Tailwind CSS, Radix UI components
+- **AI**: Anthropic Claude for problem generation and image processing
+- **Backend**: Next.js API routes with in-memory caching
 
 ## Getting Started
 
-First, run the development server:
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd mathlingo-demo
+   ```
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Set up environment variables**
+   Create a `.env.local` file:
+   ```env
+   ANTHROPIC_API_KEY=your_anthropic_api_key_here
+   ```
+
+4. **Run the development server**
+   ```bash
+   npm run dev
+   ```
+
+5. **Open your browser**
+   Navigate to `http://localhost:3001`
+
+## API Endpoints
+
+### `/api/problem`
+Generates math problems with random question types.
+
+**Request:**
+```json
+{
+  "topic": "Basic arithmetic",
+  "difficulty": 3,
+  "problemHistory": []
+}
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+**Response:**
+```json
+{
+  "id": "uuid",
+  "prompt": "What is 15 + 27?",
+  "type": "multiple_choice",
+  "options": ["A. 42", "B. 43", "C. 44"],
+  "difficulty": 3
+}
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### `/api/grade`
+Grades student answers based on question type.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**Request:**
+```json
+{
+  "id": "problem_id",
+  "learnerAnswer": "A",
+  "questionType": "multiple_choice"
+}
+```
 
-## Learn More
+**Response:**
+```json
+{
+  "correct": true,
+  "explanation": "Great job! 15 + 27 = 42",
+  "xpGained": 10
+}
+```
 
-To learn more about Next.js, take a look at the following resources:
+### `/api/solve`
+Processes uploaded images using AI vision for drawing questions.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Request:** FormData with image file
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**Response:**
+```json
+{
+  "extractedText": "x + 5 = 10"
+}
+```
 
-## Deploy on Vercel
+## Question Type Examples
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Text Input
+- **Prompt**: "Solve for x: 3x + 7 = 22"
+- **Expected Answer**: "5"
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Multiple Choice
+- **Prompt**: "What is the area of a rectangle with length 8 and width 6?"
+- **Options**: 
+  - A. 14
+  - B. 48
+  - C. 28
+- **Correct**: B
+
+### Drawing
+- **Prompt**: "Draw the equation: 2x + 3 = 11"
+- **Expected Answer**: "2x + 3 = 11"
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
+
+## License
+
+MIT License - see LICENSE file for details.

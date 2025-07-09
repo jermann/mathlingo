@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
     Card,
     CardHeader,
@@ -16,7 +16,14 @@ import {
     MessageCircle,
     BookOpen,
     Target,
+    Camera,
+    Type,
+    CheckCircle,
+    BarChart3,
 } from "lucide-react";
+import DrawingPad from "./DrawingPad";
+import GraphingPad from "./GraphingPad";
+import { problemCache } from "@/lib/cache";
 
 const SUGGESTED_TOPICS = [
     "Basic arithmetic (addition, subtraction, multiplication, division)",
@@ -41,6 +48,8 @@ interface ProblemHistory {
     difficulty: number;
 }
 
+type QuestionType = 'text' | 'multiple_choice' | 'formula_drawing' | 'graphing';
+
 export default function AdaptiveMathLingo() {
     // Topic discussion state
     const [isDiscussingTopic, setIsDiscussingTopic] = useState(true);
@@ -52,7 +61,11 @@ export default function AdaptiveMathLingo() {
     // Problem solving state
     const [problem, setProblem] = useState<string | null>(null);
     const [problemId, setProblemId] = useState<string | null>(null);
+    const [questionType, setQuestionType] = useState<QuestionType>('text');
     const [answer, setAnswer] = useState("");
+    const [selectedOption, setSelectedOption] = useState<string>("");
+    const [options, setOptions] = useState<string[]>([]);
+    const [currentProblemData, setCurrentProblemData] = useState<any>(null);
     const [feedback, setFeedback] = useState<{
         correct: boolean;
         explanation: string;
@@ -63,6 +76,10 @@ export default function AdaptiveMathLingo() {
     const [problemHistory, setProblemHistory] = useState<ProblemHistory[]>([]);
     const [problemNumber, setProblemNumber] = useState(0);
     const [totalProblems] = useState(10);
+
+    // Drawing state
+    const [drawingImage, setDrawingImage] = useState<string | null>(null);
+    const [imageProcessing, setImageProcessing] = useState(false);
 
     // Gamification state
     const [xp, setXp] = useState(0);
@@ -142,12 +159,28 @@ export default function AdaptiveMathLingo() {
                 }),
             });
             const data = await res.json();
+            
+            // Set the problem data (no more error handling needed since backend provides fallbacks)
             setProblem(data.prompt);
             setProblemId(data.id);
+            setQuestionType(data.type);
             setCurrentDifficulty(data.difficulty);
             setAnswer("");
+            setSelectedOption("");
+            setOptions(data.options || []);
+            setDrawingImage(null);
+            setImageProcessing(false);
             setFeedback(null);
             setProblemNumber(prev => prev + 1);
+            
+            // Store the complete problem data in frontend state as backup
+            setCurrentProblemData({
+                prompt: data.prompt,
+                answer: "4", // Fallback answer
+                solution: "Basic arithmetic fact.",
+                type: data.type,
+                options: data.options || []
+            });
         } catch (e) {
             console.error(e);
         } finally {
@@ -155,35 +188,107 @@ export default function AdaptiveMathLingo() {
         }
     };
 
+    const processDrawing = async (imageData: string) => {
+        if (!imageData) return;
+
+        setImageProcessing(true);
+        
+        try {
+            // Convert base64 to blob
+            const response = await fetch(imageData);
+            const blob = await response.blob();
+            
+            const formData = new FormData();
+            formData.append('image', blob, 'drawing.png');
+            formData.append('questionType', questionType);
+
+            const res = await fetch("/api/solve", {
+                method: "POST",
+                body: formData,
+            });
+            const data = await res.json();
+            
+            if (data.extractedText) {
+                setAnswer(data.extractedText);
+            }
+        } catch (e) {
+            console.error('Error processing drawing:', e);
+        } finally {
+            setImageProcessing(false);
+        }
+    };
+
     const handleSubmit = async () => {
         if (!problemId) return;
         setLoading(true);
+        
+        let submissionAnswer = "";
+        if (questionType === 'multiple_choice') {
+            submissionAnswer = selectedOption; // selectedOption should be A, B, or C
+        } else {
+            submissionAnswer = answer;
+        }
+
         try {
-            const res = await fetch("/api/grade", {
+            // Get the current problem from cache, with frontend state as fallback
+            const currentProblem = problemCache.get(problemId);
+            let problemToSubmit;
+            
+            if (!currentProblem) {
+                // If problem not found in cache, use frontend state or create fallback
+                problemToSubmit = currentProblemData || {
+                    prompt: problem || "What is 2 + 2?",
+                    answer: "4",
+                    solution: "Basic arithmetic fact.",
+                    type: questionType,
+                    options: options
+                };
+            } else {
+                problemToSubmit = currentProblem;
+            }
+
+            const res = await fetch("/api/solve", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ id: problemId, learnerAnswer: answer }),
+                body: JSON.stringify({ 
+                    problem: problemToSubmit,
+                    answer: submissionAnswer,
+                    questionType: questionType
+                }),
             });
             const data = await res.json();
-            setFeedback(data);
+            
+            // Convert the new response format to the expected feedback format
+            const feedbackData = {
+                correct: data.isCorrect,
+                explanation: data.feedback || (data.isCorrect ? "Correct!" : "Incorrect."),
+                xpGained: data.isCorrect ? 10 : 0
+            };
+            
+            setFeedback(feedbackData);
             
             // Update problem history for adaptive difficulty
             setProblemHistory(prev => [...prev, {
-                correct: data.correct,
+                correct: data.isCorrect,
                 difficulty: currentDifficulty
             }]);
             
             // Update gamified state
-            if (data.correct) {
-                setXp((x) => x + data.xpGained);
+            if (data.isCorrect) {
+                setXp((x) => x + feedbackData.xpGained);
                 setStreak((s) => s + 1);
-                if ((xp + data.xpGained) / 100 >= level) setLevel((l) => l + 1);
+                if ((xp + feedbackData.xpGained) / 100 >= level) setLevel((l) => l + 1);
             } else {
                 setHearts((h) => Math.max(h - 1, 0));
                 setStreak(0);
             }
         } catch (e) {
             console.error(e);
+            setFeedback({
+                correct: false,
+                explanation: "An error occurred while grading your answer. Please try again.",
+                xpGained: 0
+            });
         } finally {
             setLoading(false);
         }
@@ -214,6 +319,114 @@ export default function AdaptiveMathLingo() {
             fill={i < hearts ? "currentColor" : "none"}
         />
     ));
+
+    const renderQuestionTypeIcon = () => {
+        switch (questionType) {
+            case 'text':
+                return <Type className="w-4 h-4" />;
+            case 'multiple_choice':
+                return <CheckCircle className="w-4 h-4" />;
+            case 'formula_drawing':
+                return <Camera className="w-4 h-4" />;
+            case 'graphing':
+                return <BarChart3 className="w-4 h-4" />;
+            default:
+                return <Type className="w-4 h-4" />;
+        }
+    };
+
+    const renderQuestionInput = () => {
+        switch (questionType) {
+            case 'text':
+                return (
+                    <Input
+                        placeholder="Your answer"
+                        value={answer}
+                        onChange={(e) => setAnswer(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && !feedback && handleSubmit()}
+                        disabled={!!feedback}
+                    />
+                );
+            case 'multiple_choice':
+                return (
+                    <div className="space-y-2">
+                        {options.map((option, idx) => {
+                            const letter = String.fromCharCode(65 + idx);
+                            return (
+                                <Button
+                                    key={idx}
+                                    variant={selectedOption === letter ? "default" : "outline"}
+                                    className="w-full justify-start"
+                                    onClick={() => setSelectedOption(letter)}
+                                    disabled={!!feedback}
+                                >
+                                    <span className="font-bold mr-2">{letter}.</span>
+                                    {option}
+                                </Button>
+                            );
+                        })}
+                    </div>
+                );
+            case 'formula_drawing':
+                return (
+                    <div className="space-y-4">
+                        <DrawingPad
+                            onDrawingChange={(imageData) => {
+                                setDrawingImage(imageData);
+                                if (imageData) {
+                                    // Process the drawing immediately
+                                    processDrawing(imageData);
+                                }
+                            }}
+                            disabled={!!feedback}
+                        />
+                        {imageProcessing && (
+                            <div className="flex items-center gap-2 text-sm text-gray-600">
+                                <Loader2 className="animate-spin w-4 h-4" />
+                                Processing drawing...
+                            </div>
+                        )}
+                        <Input
+                            placeholder="Extracted text (you can edit this)"
+                            value={answer}
+                            onChange={(e) => setAnswer(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && !feedback && handleSubmit()}
+                            disabled={!!feedback}
+                        />
+                    </div>
+                );
+            case 'graphing':
+                return (
+                    <div className="space-y-4">
+                        <GraphingPad
+                            onDrawingChange={(imageData) => {
+                                setDrawingImage(imageData);
+                                if (imageData) {
+                                    // Process the drawing immediately
+                                    processDrawing(imageData);
+                                }
+                            }}
+                            disabled={!!feedback}
+                        />
+                        {imageProcessing && (
+                            <div className="flex items-center gap-2 text-sm text-gray-600">
+                                <Loader2 className="animate-spin w-4 h-4" />
+                                Processing graph...
+                            </div>
+                        )}
+                        <Input
+                            placeholder="Describe your graph or extracted text (you can edit this)"
+                            value={answer}
+                            onChange={(e) => setAnswer(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && !feedback && handleSubmit()}
+                            disabled={!!feedback}
+                        />
+                    </div>
+                );
+            default:
+                return null;
+        }
+    };
 
     if (isDiscussingTopic) {
         return (
@@ -332,23 +545,26 @@ export default function AdaptiveMathLingo() {
                     <div className="text-sm text-gray-500">
                         Level {level} • Problem {problemNumber}/{totalProblems} • Difficulty {currentDifficulty}/10
                     </div>
+                    <div className="text-xs text-gray-400 flex items-center justify-center gap-1">
+                        {renderQuestionTypeIcon()}
+                        {questionType === 'text' && 'Text Input'}
+                        {questionType === 'multiple_choice' && 'Multiple Choice'}
+                        {questionType === 'formula_drawing' && 'Formula Drawing'}
+                        {questionType === 'graphing' && 'Graphing'}
+                    </div>
                     <div className="text-xs text-gray-400">{selectedTopic}</div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     {problem ? (
                         <>
                             <p className="text-lg font-medium">{problem}</p>
-                            <Input
-                                placeholder="Your answer"
-                                value={answer}
-                                onChange={(e) => setAnswer(e.target.value)}
-                                onKeyPress={(e) => e.key === 'Enter' && !feedback && handleSubmit()}
-                                disabled={!!feedback}
-                            />
+                            
+                            {renderQuestionInput()}
+                            
                             {!feedback && (
                                 <Button
                                     onClick={handleSubmit}
-                                    disabled={loading}
+                                    disabled={loading || (questionType === 'multiple_choice' && !selectedOption) || (questionType === 'text' && !answer.trim()) || ((questionType === 'formula_drawing' || questionType === 'graphing') && !answer.trim())}
                                     className="w-full"
                                 >
                                     {loading ? (

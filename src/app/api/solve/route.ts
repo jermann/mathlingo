@@ -1,93 +1,241 @@
-// -----------------------------------------------------------------
-// 2. API Route (src/app/api/solve/route.ts or pages/api/solve.ts)
-//    Calls OpenAI twice: once to SOLVE, once to CRITIQUE & score.
-//    Returns JSON: { solution, critique, confidence }
+import { NextRequest } from "next/server";
+import Anthropic from "@anthropic-ai/sdk";
 
-import OpenAI from "openai";
-import type { NextRequest } from "next/server";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
 export async function POST(req: NextRequest) {
-    try {
-        // Check if API key is configured
-        if (!process.env.OPENAI_API_KEY) {
-            return new Response(
-                JSON.stringify({
-                    solution: "OpenAI API key not configured. Please add OPENAI_API_KEY to your environment variables.",
-                    critique: "",
-                    confidence: 0,
-                }),
-                { status: 500, headers: { "Content-Type": "application/json" } }
-            );
-        }
-
-        const { problem } = (await req.json()) as { problem: string };
-
-        // 1️⃣ Get the LLM to solve step‑by‑step
-        const solveMsg = await openai.chat.completions.create({
-            model: "gpt-4o-mini", // adjust if needed
-            max_tokens: 512,
-            messages: [
-                { role: "system", content: "You are a helpful math tutor. Always show clear, numbered steps and the final answer on its own line prefixed with 'ANSWER:'." },
-                { role: "user", content: `Solve the following problem.\n\n${problem}` },
-            ],
-        });
-        const solution = solveMsg.choices?.[0]?.message?.content ?? "";
-
-        // 2️⃣ Ask the model to critique & rate confidence (0‑1)
-        const critiquePrompt = `Here is your earlier solution in markdown:\n\n---\n${solution}\n---\n\nPlease critique it for correctness, clarity, and completeness. Then output a JSON object ONLY with keys: critique (string) and confidence (number 0‑1).`;
-
-        const critiqueMsg = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            max_tokens: 256,
-            messages: [
-                { role: "system", content: "You are a strict math TA who never hallucinates. If unsure, give lower confidence." },
-                { role: "user", content: critiquePrompt },
-            ],
-        });
-
-        // naïve JSON extraction – OpenAI usually returns code‑block JSON
-        const jsonMatch = critiqueMsg.choices?.[0]?.message?.content?.match(/\{[\s\S]*\}/);
-        let critique = "(no critique)", confidence = 0.5;
-        if (jsonMatch) {
-            try {
-                const obj = JSON.parse(jsonMatch[0]);
-                critique = obj.critique;
-                confidence = obj.confidence;
-            } catch (_) { }
-        }
-
-        return new Response(
-            JSON.stringify({ solution, critique, confidence }),
-            { status: 200, headers: { "Content-Type": "application/json" } }
-        );
-    } catch (err) {
-        console.error(err);
-        return new Response(
-            JSON.stringify({
-                solution: "Error processing request.",
-                critique: "",
-                confidence: 0,
-            }),
-            { status: 500, headers: { "Content-Type": "application/json" } }
-        );
+  try {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return new Response(
+        JSON.stringify({
+          error: "ANTHROPIC_API_KEY not configured",
+          extractedText: "",
+          isCorrect: false
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
     }
+
+    const contentType = req.headers.get('content-type');
+    
+    if (contentType?.includes('multipart/form-data')) {
+      // Handle drawing questions (image upload)
+      return await handleDrawingQuestion(req);
+    } else {
+      // Handle other question types (JSON)
+      return await handleOtherQuestionTypes(req);
+    }
+  } catch (error) {
+    console.error('Solve API error:', error);
+    return new Response(
+      JSON.stringify({
+        error: "Failed to process request. Please try again.",
+        extractedText: "",
+        isCorrect: false
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  }
 }
 
-// -----------------------------------------------------------------
-// 3. Deploying to Vercel / Netlify
-// -----------------------------------------------------------------
-// a. Push to GitHub/GitLab.
-// b. Import repo → Vercel. Build command defaults to `next build`.
-// c. Add `OPENAI_API_KEY` under *Project → Settings → Environment Variables*.
-// d. For Netlify: add env var in Site settings > Environment.
-// e. Hit the deployed `/demo` route and test! 🎉
-// -----------------------------------------------------------------
-// 4. Extending to SymPy auto‑tests (optional)
-// -----------------------------------------------------------------
-// • Spin up a tiny FastAPI service on Fly.io that receives a math
-//   expression + proposed answer, uses SymPy to verify equivalence, and
-//   returns pass/fail. Call it from this API route before critique.
-// • Or bundle Pyodide in the edge runtime (experimental) for pure JS.
-// ----------------------------------------------------------------- 
+async function handleDrawingQuestion(req: NextRequest) {
+  const formData = await req.formData();
+  const imageFile = formData.get('image') as File;
+  const questionType = formData.get('questionType') as string;
+  
+  if (!imageFile) {
+    return new Response(
+      JSON.stringify({ 
+        error: "No image provided",
+        extractedText: "",
+        isCorrect: false
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  // Convert image to base64
+  const bytes = await imageFile.arrayBuffer();
+  const buffer = Buffer.from(bytes);
+  const base64Image = buffer.toString('base64');
+  
+  // Validate and set mime type
+  let mimeType = imageFile.type;
+  if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mimeType)) {
+    mimeType = 'image/png'; // Default fallback
+  }
+
+  // Different prompts for different drawing question types
+  let prompt = "Please extract the mathematical expression or equation from this image. Return only the mathematical text in a clear, readable format.";
+  
+  if (questionType === 'formula_drawing') {
+    prompt = "Please extract the mathematical formula or expression from this image. Return only the mathematical text in a clear, readable format. If there are multiple expressions, separate them clearly.";
+  } else if (questionType === 'graphing') {
+    prompt = "Please analyze this graph or coordinate plot. Describe what you see: the shape, coordinates of key points, or any mathematical relationship shown. Return a clear description.";
+  }
+
+  // Use Claude Vision to extract text from the image
+  const msg = await anthropic.messages.create({
+    model: "claude-3-5-sonnet-20241022",
+    max_tokens: 1000,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: prompt
+          },
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+              data: base64Image
+            }
+          }
+        ]
+      }
+    ]
+  });
+
+  const extractedText = msg.content?.[0]?.type === 'text' ? msg.content[0].text.trim() : "";
+
+  return new Response(
+    JSON.stringify({ 
+      extractedText,
+      isCorrect: true // For drawing questions, we just extract text, grading happens on frontend
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } }
+  );
+}
+
+async function handleOtherQuestionTypes(req: NextRequest) {
+  const body = await req.json();
+  const { problem, answer, questionType } = body;
+
+  if (!problem || !answer || !questionType) {
+    return new Response(
+      JSON.stringify({
+        error: "Missing required fields: problem, answer, or questionType",
+        extractedText: "",
+        isCorrect: false
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  let isCorrect = false;
+  let feedback = "";
+
+  switch (questionType) {
+    case 'text':
+      // For text questions, use Claude to grade the answer
+      const textResponse = await anthropic.messages.create({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 500,
+        messages: [
+          {
+            role: "user",
+            content: `Problem: ${problem.prompt}\n\nStudent's answer: ${answer}\n\nPlease grade this answer. Respond with only a JSON object in this exact format:\n{\n  "isCorrect": true/false,\n  "feedback": "brief explanation of why the answer is correct or incorrect"\n}`
+          }
+        ]
+      });
+
+      try {
+        const textContent = textResponse.content[0];
+        if (textContent.type === 'text') {
+          const textResult = JSON.parse(textContent.text);
+          isCorrect = textResult.isCorrect;
+          feedback = textResult.feedback;
+        } else {
+          throw new Error('Unexpected response type');
+        }
+      } catch (e) {
+        // Fallback grading
+        isCorrect = false;
+        feedback = "Unable to grade answer automatically.";
+      }
+      break;
+
+    case 'multiple_choice':
+      // For multiple choice, check if the selected option is correct
+      // The answer should be the letter (A, B, C) and we need to check against the correct option
+      const mcResponse = await anthropic.messages.create({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 500,
+        messages: [
+          {
+            role: "user",
+            content: `Problem: ${problem.prompt}\n\nOptions: ${JSON.stringify(problem.options)}\n\nStudent selected: ${answer}\n\nPlease determine if the selected answer is correct. Respond with only a JSON object in this exact format:\n{\n  "isCorrect": true/false,\n  "feedback": "brief explanation"\n}`
+          }
+        ]
+      });
+
+      try {
+        const mcContent = mcResponse.content[0];
+        if (mcContent.type === 'text') {
+          const mcResult = JSON.parse(mcContent.text);
+          isCorrect = mcResult.isCorrect;
+          feedback = mcResult.feedback;
+        } else {
+          throw new Error('Unexpected response type');
+        }
+      } catch (e) {
+        // Fallback grading
+        isCorrect = false;
+        feedback = "Unable to grade answer automatically.";
+      }
+      break;
+
+    case 'formula_drawing':
+    case 'graphing':
+      // For drawing questions, we expect the answer to be the extracted text from the image
+      // Grade based on the problem prompt and the extracted answer
+      const drawingResponse = await anthropic.messages.create({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 500,
+        messages: [
+          {
+            role: "user",
+            content: `Problem: ${problem.prompt}\n\nStudent's answer (extracted from drawing): ${answer}\n\nPlease grade this answer. Respond with only a JSON object in this exact format:\n{\n  "isCorrect": true/false,\n  "feedback": "brief explanation of why the answer is correct or incorrect"\n}`
+          }
+        ]
+      });
+
+      try {
+        const drawingContent = drawingResponse.content[0];
+        if (drawingContent.type === 'text') {
+          const drawingResult = JSON.parse(drawingContent.text);
+          isCorrect = drawingResult.isCorrect;
+          feedback = drawingResult.feedback;
+        } else {
+          throw new Error('Unexpected response type');
+        }
+      } catch (e) {
+        // Fallback grading
+        isCorrect = false;
+        feedback = "Unable to grade answer automatically.";
+      }
+      break;
+
+    default:
+      return new Response(
+        JSON.stringify({
+          error: `Unsupported question type: ${questionType}`,
+          extractedText: "",
+          isCorrect: false
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+  }
+
+  return new Response(
+    JSON.stringify({
+      extractedText: answer,
+      isCorrect,
+      feedback
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } }
+  );
+} 

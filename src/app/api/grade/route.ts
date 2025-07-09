@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
-import { problemCache } from "@/lib/cache";
+import { problemCache, Problem } from "@/lib/cache";
 
 export async function POST(req: NextRequest) {
-  const { id, learnerAnswer } = (await req.json()) as {
+  const { id, learnerAnswer, questionType } = (await req.json()) as {
     id: string;
     learnerAnswer: string;
+    questionType?: string;
   };
   
   // Handle demo case
@@ -22,10 +23,18 @@ export async function POST(req: NextRequest) {
     );
   }
   
-  const entry = problemCache.get(id);
+  const entry = problemCache.get(id) as Problem;
   if (!entry) return new Response("Not found", { status: 404 });
 
-  const correct = isEquivalent(entry.answer, learnerAnswer);
+  let correct = false;
+  
+  // Handle different question types
+  if (entry.type === 'multiple_choice') {
+    correct = entry.answer.toUpperCase() === learnerAnswer.toUpperCase();
+  } else {
+    correct = isEquivalent(entry.answer, learnerAnswer);
+  }
+
   const xpGained = correct ? 10 : 0;
 
   // Explanation: show model's step‑by‑step solution OR brief critique
