@@ -218,42 +218,72 @@ This will test all question types and verify the complete system is working corr
 
 MIT License - see LICENSE file for details.
 
-# Postgres Setup
+## Environment Setup
 
-1. Install Postgres locally (https://www.postgresql.org/download/)
-2. Create a database:
-   
-   ```sh
-   createdb mathlingo_demo
-   ```
-3. Set the environment variable in a `.env` file at the project root:
-   
-   ```env
-   DATABASE_URL=postgresql://localhost:5432/mathlingo_demo
-   ```
-4. Run the migrations below to create the required tables.
+1. **Install Postgres** (if not already installed):
+   - On Mac: `brew install postgresql`
+   - Start Postgres: `brew services start postgresql`
+   - Make sure the `createdb` command is available in your terminal.
 
-# Database Migrations
+2. **Configure your database connection:**
+   - Create a file named `.env.local` in the project root (next to `package.json`).
+   - Add this line (change the database name if you want):
+     ```env
+     DATABASE_URL=postgresql://localhost:5432/mathlingo_demo
+     ```
 
-Run these SQL commands in your Postgres database:
+## Database Management
 
-```sql
-CREATE TABLE attempts (
-  id SERIAL PRIMARY KEY,
-  user_id TEXT,
-  question_text TEXT NOT NULL,
-  student_answer TEXT NOT NULL,
-  llm_answer TEXT NOT NULL,
-  time_taken_seconds INTEGER,
-  points INTEGER,
-  created_at TIMESTAMP DEFAULT NOW()
-);
+- **Automatic Database Creation:**
+  - The setup and reset scripts will automatically create the `mathlingo_demo` database if it does not exist (when using localhost).
 
-CREATE TABLE feedback (
-  id SERIAL PRIMARY KEY,
-  attempt_id INTEGER REFERENCES attempts(id) ON DELETE CASCADE,
-  thumbs_up BOOLEAN,
-  comment TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-```
+- **Create or Migrate Tables:**
+  - Run:
+    ```sh
+    npm run db:setup
+    ```
+    This will:
+    - Create the `attempts` and `feedback` tables if they do not exist.
+    - Add `topic` and `difficulty` columns to `attempts` if missing.
+
+- **Reset the Database:**
+  - Run:
+    ```sh
+    npm run db:reset
+    ```
+    This will:
+    - Drop the `feedback` and `attempts` tables if they exist.
+    - Recreate them (including all columns).
+    - Auto-create the database if needed.
+
+## Data Model
+
+- **attempts** table now includes:
+  - `topic` (text): The topic the student selected
+  - `difficulty` (integer): The difficulty level for the attempt
+  - All previous fields (question, answer, LLM answer, time, points, etc.)
+
+- **feedback** table:
+  - Stores feedback (thumbs up/down, comment) linked to an attempt
+
+## Running the App
+
+- Make sure your database is set up (see above)
+- Start the app:
+  ```sh
+  npm run dev
+  ```
+
+## Troubleshooting
+
+- If you see errors about a missing database (e.g. `database "alexander" does not exist`), make sure your `.env.local` is present and correct, and re-run the setup script.
+- If you change your database name, update `.env.local` and re-run the setup/reset scripts.
+
+## Testing
+
+- You can use the included test script (`test-api.js`) to verify API functionality.
+- Or, use the UI and check the database for new attempts and feedback.
+
+---
+
+For any issues, check your terminal logs for detailed error messages.
