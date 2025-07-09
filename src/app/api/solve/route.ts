@@ -71,7 +71,13 @@ async function handleDrawingQuestion(req: NextRequest) {
   if (questionType === 'formula_drawing') {
     prompt = "Please extract the mathematical formula or expression from this image. Return only the mathematical text in a clear, readable format. If there are multiple expressions, separate them clearly.";
   } else if (questionType === 'graphing') {
-    prompt = "Please analyze this graph or coordinate plot. Describe what you see: the shape, coordinates of key points, or any mathematical relationship shown. Return a clear description.";
+    prompt = `Please analyze this graph or coordinate plot. Identify and list the coordinates of all labeled points, especially the vertex and x-intercepts. If coordinates are written on the graph, use those. Describe the general shape and any mathematical relationships shown. Return a clear description. When grading, use the following rubric: 
+- 1 point for correct general shape (e.g., parabola opening up)
+- 1 point for correct vertex location
+- 1 point for each correctly labeled x-intercept
+- 1 point for correctly labeled y-intercept
+- 1 point for at least 5 points plotted
+Award partial credit and provide feedback for each part.`;
   }
 
   // Use Claude Vision to extract text from the image
@@ -198,7 +204,7 @@ async function handleOtherQuestionTypes(req: NextRequest) {
         messages: [
           {
             role: "user",
-            content: `Problem: ${problem.prompt}\n\nStudent's answer (extracted from drawing): ${answer}\n\nPlease grade this answer. Respond with only a JSON object in this exact format:\n{\n  "isCorrect": true/false,\n  "feedback": "brief explanation of why the answer is correct or incorrect"\n}`
+            content: `Problem: ${problem.prompt}\n\nStudent's answer (extracted from drawing): ${answer}\n\nPlease grade this answer using the following rubric (if applicable):\n- 1 point for correct general shape (e.g., parabola opening up)\n- 1 point for correct vertex location\n- 1 point for each correctly labeled x-intercept\n- 1 point for correctly labeled y-intercept\n- 1 point for at least 5 points plotted\nAward partial credit and provide feedback for each part. Respond with only a JSON object in this exact format:\n{\n  \"score\": <number>,\n  \"maxScore\": <number>,\n  \"isCorrect\": true/false,\n  \"feedback\": \"detailed feedback for each rubric item\"\n}`
           }
         ]
       });
@@ -209,6 +215,7 @@ async function handleOtherQuestionTypes(req: NextRequest) {
           const drawingResult = JSON.parse(drawingContent.text);
           isCorrect = drawingResult.isCorrect;
           feedback = drawingResult.feedback;
+          // Optionally, you can also return score and maxScore for frontend display
         } else {
           throw new Error('Unexpected response type');
         }

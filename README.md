@@ -45,11 +45,12 @@ An adaptive math learning platform that generates personalized math problems and
 - Visual feedback for selection
 
 ### Formula Drawing
-- **Interactive canvas** for drawing mathematical expressions
+- **Interactive canvas** for drawing mathematical expressions, equations, and formulas
 - **Brush size control** and eraser functionality
 - **AI OCR processing** using Claude Vision
 - **Manual editing** of extracted text
-- Perfect for equations, formulas, and step-by-step work
+- **Focus on mathematical notation** - specifically excludes graphs and coordinate plots
+- Perfect for equations, formulas, algebraic expressions, and step-by-step work
 
 ### Graphing
 - **Coordinate plane** with gridlines and numbered axes
@@ -216,3 +217,43 @@ This will test all question types and verify the complete system is working corr
 ## License
 
 MIT License - see LICENSE file for details.
+
+# Postgres Setup
+
+1. Install Postgres locally (https://www.postgresql.org/download/)
+2. Create a database:
+   
+   ```sh
+   createdb mathlingo_demo
+   ```
+3. Set the environment variable in a `.env` file at the project root:
+   
+   ```env
+   DATABASE_URL=postgresql://localhost:5432/mathlingo_demo
+   ```
+4. Run the migrations below to create the required tables.
+
+# Database Migrations
+
+Run these SQL commands in your Postgres database:
+
+```sql
+CREATE TABLE attempts (
+  id SERIAL PRIMARY KEY,
+  user_id TEXT,
+  question_text TEXT NOT NULL,
+  student_answer TEXT NOT NULL,
+  llm_answer TEXT NOT NULL,
+  time_taken_seconds INTEGER,
+  points INTEGER,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE feedback (
+  id SERIAL PRIMARY KEY,
+  attempt_id INTEGER REFERENCES attempts(id) ON DELETE CASCADE,
+  thumbs_up BOOLEAN,
+  comment TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```

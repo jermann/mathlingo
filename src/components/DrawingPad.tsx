@@ -1,7 +1,7 @@
 "use client";
 import React, { useRef, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Eraser, RotateCcw, Download, Upload } from 'lucide-react';
+import { Eraser, RotateCcw, Download } from 'lucide-react';
 
 interface DrawingPadProps {
   onDrawingChange: (imageData: string) => void;
@@ -204,11 +204,12 @@ export default function DrawingPad({ onDrawingChange, disabled = false }: Drawin
 
       {/* Instructions */}
       <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
-        <p className="font-medium mb-1">Drawing Instructions:</p>
+        <p className="font-medium mb-1">Formula Drawing Instructions:</p>
         <ul className="list-disc list-inside space-y-1 text-xs">
-          <li>Draw your mathematical expression clearly</li>
+          <li>Draw your mathematical expression, equation, or formula clearly</li>
           <li>Use the eraser to correct mistakes</li>
           <li>Try to keep your writing neat and readable</li>
+          <li>Focus on mathematical notation, not graphs or plots</li>
           <li>You can save your drawing if needed</li>
         </ul>
       </div>

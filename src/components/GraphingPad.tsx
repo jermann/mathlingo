@@ -280,6 +280,7 @@ export default function GraphingPad({ onDrawingChange, disabled = false }: Graph
           <li>Use the coordinate grid to plot points or draw functions</li>
           <li>The center is at (0,0) with numbered axes</li>
           <li>Each grid square represents 1 unit</li>
+          <li>Label each key point (vertex, x-intercepts, etc.) with its coordinates (e.g., (2, 0)) directly on the graph</li>
           <li>Use the eraser to correct mistakes</li>
           <li>You can save your graph if needed</li>
         </ul>

@@ -27,6 +27,8 @@ import {
     HeartIcon,
     StarIcon,
     Loader2,
+    ThumbsUp,
+    ThumbsDown,
 } from "lucide-react";
 
 export default function MathLingoDemo() {
@@ -47,6 +49,14 @@ export default function MathLingoDemo() {
     const [streak, setStreak] = useState(0);
     const [level, setLevel] = useState(1);
 
+    // attempt and feedback
+    const [attemptId, setAttemptId] = useState<number | null>(null);
+    const [showFeedbackUI, setShowFeedbackUI] = useState(false);
+    const [thumbs, setThumbs] = useState<null | boolean>(null);
+    const [comment, setComment] = useState("");
+    const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+    const [startTime, setStartTime] = useState<number | null>(null);
+
     // fetch first problem on mount
     useEffect(() => {
         if (!problem) fetchProblem();
@@ -66,6 +76,12 @@ export default function MathLingoDemo() {
             setProblemId(data.id);
             setAnswer("");
             setFeedback(null);
+            setAttemptId(null);
+            setShowFeedbackUI(false);
+            setThumbs(null);
+            setComment("");
+            setFeedbackSubmitted(false);
+            setStartTime(Date.now());
         } catch (e) {
             console.error(e);
         } finally {
@@ -93,6 +109,45 @@ export default function MathLingoDemo() {
                 setHearts((h) => Math.max(h - 1, 0));
                 setStreak(0);
             }
+            // Store attempt in DB
+            const timeTaken = startTime ? Math.round((Date.now() - startTime) / 1000) : null;
+            const attemptRes = await fetch("/api/attempt", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    user_id: null,
+                    question_text: problem,
+                    student_answer: answer,
+                    llm_answer: data.explanation,
+                    time_taken_seconds: timeTaken,
+                    points: data.xpGained,
+                }),
+            });
+            const attemptData = await attemptRes.json();
+            setAttemptId(attemptData.id);
+            setShowFeedbackUI(true);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleFeedbackSubmit = async () => {
+        if (!attemptId || thumbs === null) return;
+        setLoading(true);
+        try {
+            await fetch("/api/feedback", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    attempt_id: attemptId,
+                    thumbs_up: thumbs,
+                    comment,
+                }),
+            });
+            setFeedbackSubmitted(true);
+            setShowFeedbackUI(false);
         } catch (e) {
             console.error(e);
         } finally {
@@ -163,6 +218,44 @@ export default function MathLingoDemo() {
                                     <pre className="whitespace-pre-wrap bg-gray-50 p-3 rounded-lg border text-sm">
                                         {feedback.explanation}
                                     </pre>
+                                    {/* Feedback UI */}
+                                    {showFeedbackUI && !feedbackSubmitted && (
+                                        <div className="space-y-2 border rounded-lg p-3 bg-gray-50">
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <button
+                                                    className={`p-2 rounded-full border ${thumbs === true ? 'bg-green-100 border-green-400' : 'border-gray-300'}`}
+                                                    onClick={() => setThumbs(true)}
+                                                    aria-label="Thumbs up"
+                                                >
+                                                    <ThumbsUp className={`w-5 h-5 ${thumbs === true ? 'text-green-600' : 'text-gray-400'}`} />
+                                                </button>
+                                                <button
+                                                    className={`p-2 rounded-full border ${thumbs === false ? 'bg-red-100 border-red-400' : 'border-gray-300'}`}
+                                                    onClick={() => setThumbs(false)}
+                                                    aria-label="Thumbs down"
+                                                >
+                                                    <ThumbsDown className={`w-5 h-5 ${thumbs === false ? 'text-red-600' : 'text-gray-400'}`} />
+                                                </button>
+                                                <span className="ml-2 text-sm text-gray-500">Report an issue or give feedback</span>
+                                            </div>
+                                            <Input
+                                                placeholder="Optional comment"
+                                                value={comment}
+                                                onChange={e => setComment(e.target.value)}
+                                                className="mb-2"
+                                            />
+                                            <Button
+                                                onClick={handleFeedbackSubmit}
+                                                disabled={thumbs === null || loading}
+                                                className="w-full"
+                                            >
+                                                {loading ? <Loader2 className="animate-spin" /> : "Submit Feedback"}
+                                            </Button>
+                                        </div>
+                                    )}
+                                    {feedbackSubmitted && (
+                                        <div className="text-green-600 text-sm font-medium">Thank you for your feedback!</div>
+                                    )}
                                     <Button className="w-full" onClick={fetchProblem}>
                                         Next ➜
                                     </Button>

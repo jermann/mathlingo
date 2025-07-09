@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { v4 as uuid } from "uuid";
-import { problemCache, setProblemWithTimestamp } from "@/lib/cache";
+import { setProblemWithTimestamp } from "@/lib/cache";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
@@ -74,7 +74,7 @@ Difficulty: ${difficultyDescription} (level ${adjustedDifficulty}/10)`;
         query += `\n\nCreate a multiple choice problem with exactly 3 options. The options should be clearly different and only one should be correct.`;
         break;
       case 'formula_drawing':
-        query += `\n\nCreate a problem where students need to draw or write a mathematical expression, equation, or formula.`;
+        query += `\n\nCreate a problem where students need to draw or write a mathematical expression, equation, or formula. IMPORTANT: Do NOT ask students to draw graphs, plot points on a coordinate plane, or create visual representations. Only ask for mathematical expressions, equations, formulas, or algebraic notation.`;
         break;
       case 'graphing':
         query += `\n\nCreate a problem where students need to graph a function, plot points, or draw a mathematical graph on a coordinate plane.`;
@@ -104,9 +104,9 @@ Difficulty: ${difficultyDescription} (level ${adjustedDifficulty}/10)`;
         break;
       case 'formula_drawing':
         query += `\n{
-  "prompt": "problem asking to draw/write a mathematical expression or formula",
-  "answer": "expected text representation",
-  "solution": "explanation"
+  "prompt": "problem asking to draw/write a mathematical expression, equation, or formula (NOT a graph)",
+  "answer": "expected text representation of the mathematical expression",
+  "solution": "explanation of the mathematical concept"
 }`;
         break;
       case 'graphing':
