@@ -143,7 +143,7 @@ async function handleOtherQuestionTypes(req: NextRequest) {
         messages: [
           {
             role: "user",
-            content: `Problem: ${problem.prompt}\n\nStudent's answer: ${answer}\n\nPlease grade this answer. Respond with only a JSON object in this exact format:\n{\n  "isCorrect": true/false,\n  "feedback": "brief explanation of why the answer is correct or incorrect"\n}`
+            content: `Problem: ${problem.prompt}\n\nStudent's answer: ${answer}\n\nPlease grade this answer. Respond with only a JSON object in this exact format:\n{\n  \"isCorrect\": true/false,\n  \"feedback\": \"brief explanation of why the answer is correct or incorrect\"\n}`
           }
         ]
       });
@@ -151,7 +151,28 @@ async function handleOtherQuestionTypes(req: NextRequest) {
       try {
         const textContent = textResponse.content[0];
         if (textContent.type === 'text') {
-          const textResult = JSON.parse(textContent.text);
+          let jsonText = textContent.text.trim();
+          // Remove markdown code blocks if present
+          if (jsonText.startsWith('```json')) {
+            jsonText = jsonText.substring(7);
+          }
+          if (jsonText.startsWith('```')) {
+            jsonText = jsonText.substring(3);
+          }
+          if (jsonText.endsWith('```')) {
+            jsonText = jsonText.substring(0, jsonText.length - 3);
+          }
+          // Try to find JSON object boundaries
+          const jsonStart = jsonText.indexOf('{');
+          const jsonEnd = jsonText.lastIndexOf('}');
+          if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+            jsonText = jsonText.substring(jsonStart, jsonEnd + 1);
+          }
+          // Check if the JSON appears to be complete (ends with a closing brace)
+          if (!jsonText.trim().endsWith('}')) {
+            throw new Error('JSON response appears to be truncated');
+          }
+          const textResult = JSON.parse(jsonText);
           isCorrect = textResult.isCorrect;
           feedback = textResult.feedback;
         } else {
@@ -173,7 +194,7 @@ async function handleOtherQuestionTypes(req: NextRequest) {
         messages: [
           {
             role: "user",
-            content: `Problem: ${problem.prompt}\n\nOptions: ${JSON.stringify(problem.options)}\n\nStudent selected: ${answer}\n\nPlease determine if the selected answer is correct. Respond with only a JSON object in this exact format:\n{\n  "isCorrect": true/false,\n  "feedback": "brief explanation"\n}`
+            content: `Problem: ${problem.prompt}\n\nOptions: ${JSON.stringify(problem.options)}\n\nStudent selected: ${answer}\n\nPlease determine if the selected answer is correct. Respond with only a JSON object in this exact format:\n{\n  \"isCorrect\": true/false,\n  \"feedback\": \"brief explanation\"\n}`
           }
         ]
       });
@@ -181,7 +202,28 @@ async function handleOtherQuestionTypes(req: NextRequest) {
       try {
         const mcContent = mcResponse.content[0];
         if (mcContent.type === 'text') {
-          const mcResult = JSON.parse(mcContent.text);
+          let jsonText = mcContent.text.trim();
+          // Remove markdown code blocks if present
+          if (jsonText.startsWith('```json')) {
+            jsonText = jsonText.substring(7);
+          }
+          if (jsonText.startsWith('```')) {
+            jsonText = jsonText.substring(3);
+          }
+          if (jsonText.endsWith('```')) {
+            jsonText = jsonText.substring(0, jsonText.length - 3);
+          }
+          // Try to find JSON object boundaries
+          const jsonStart = jsonText.indexOf('{');
+          const jsonEnd = jsonText.lastIndexOf('}');
+          if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+            jsonText = jsonText.substring(jsonStart, jsonEnd + 1);
+          }
+          // Check if the JSON appears to be complete (ends with a closing brace)
+          if (!jsonText.trim().endsWith('}')) {
+            throw new Error('JSON response appears to be truncated');
+          }
+          const mcResult = JSON.parse(jsonText);
           isCorrect = mcResult.isCorrect;
           feedback = mcResult.feedback;
         } else {
