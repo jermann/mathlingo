@@ -63,6 +63,27 @@ function getAllowedQuestionTypes(topic: string): QuestionType[] {
     return ['text', 'multiple_choice', 'formula_drawing'];
 }
 
+// Utility: extract topic from conversation history
+function extractTopicFromHistory(history: Message[], fallback: string): string {
+    // Look for the most recent assistant suggestion: "Let's work on \"X\""
+    for (let i = history.length - 1; i >= 0; i--) {
+        const msg = history[i];
+        if (msg.role === 'assistant') {
+            const match = msg.content.match(/let's work on \"(.+?)\"/i);
+            if (match) return match[1];
+        }
+    }
+    // Look for user-provided topics (last user message)
+    for (let i = history.length - 1; i >= 0; i--) {
+        const msg = history[i];
+        if (msg.role === 'user' && msg.content.trim().length > 0) {
+            return msg.content.trim();
+        }
+    }
+    // Fallback
+    return fallback;
+}
+
 export default function AdaptiveMathLingo() {
     // Topic discussion state
     const [isDiscussingTopic, setIsDiscussingTopic] = useState(true);
@@ -129,8 +150,8 @@ export default function AdaptiveMathLingo() {
         const lastAssistantMsg = conversationHistory.length > 0 ? conversationHistory[conversationHistory.length - 1] : null;
         const letsWorkOnMatch = lastAssistantMsg && lastAssistantMsg.role === 'assistant' && lastAssistantMsg.content.match(/let's work on \"(.+?)\"/i);
         if (letsWorkOnMatch) {
-            // Extract topic from assistant message if not already set
-            const topic = letsWorkOnMatch[1];
+            // Extract topic from conversation history
+            const topic = extractTopicFromHistory([...conversationHistory, { role: 'user', content: currentMessage }], selectedTopic);
             if (!selectedTopic) {
                 setSelectedTopic(topic);
             }
@@ -138,7 +159,6 @@ export default function AdaptiveMathLingo() {
             setConversationHistory(prev => [...prev, { role: 'user', content: currentMessage }]);
             setCurrentMessage("");
             setDiscussionLoading(false);
-            // Start the problem set after a short delay to allow state updates
             setTimeout(() => {
                 fetchProblem();
             }, 0);
@@ -147,25 +167,24 @@ export default function AdaptiveMathLingo() {
 
         // Count user messages in topic discussion
         const userMsgCount = conversationHistory.filter(msg => msg.role === 'user').length + 1; // +1 for this message
-        if (userMsgCount >= 3) {
-            // Try to extract topic from last assistant message
-            let topic = selectedTopic;
-            if (!topic) {
-                const lastAssistant = conversationHistory.slice().reverse().find(msg => msg.role === 'assistant');
-                const match = lastAssistant && lastAssistant.content.match(/(?:let's work on|topic is|problems on) \"?([^"]+)\"?/i);
-                if (match) {
-                    topic = match[1];
-                } else {
-                    topic = currentMessage;
-                }
-            }
-            setSelectedTopic(topic);
-            setIsDiscussingTopic(false);
+        // If this is the 3rd user message, respond with 'Ok, let's begin!' and wait for next user message
+        if (userMsgCount === 3) {
             setConversationHistory(prev => [
                 ...prev,
                 { role: 'user', content: currentMessage },
-                { role: 'assistant', content: `Great! Let's get started on "${topic}". I'll generate 10 problems for you.` }
+                { role: 'assistant', content: `Ok, let's begin!` }
             ]);
+            setCurrentMessage("");
+            setDiscussionLoading(false);
+            return;
+        }
+        // If the last assistant message was 'Ok, let's begin!', start the exercise set now
+        if (lastAssistantMsg && lastAssistantMsg.role === 'assistant' && lastAssistantMsg.content.trim().toLowerCase() === "ok, let's begin!") {
+            // Extract topic from conversation history
+            const topic = extractTopicFromHistory([...conversationHistory, { role: 'user', content: currentMessage }], selectedTopic);
+            setSelectedTopic(topic);
+            setIsDiscussingTopic(false);
+            setConversationHistory(prev => [...prev, { role: 'user', content: currentMessage }]);
             setCurrentMessage("");
             setDiscussionLoading(false);
             setTimeout(() => {
