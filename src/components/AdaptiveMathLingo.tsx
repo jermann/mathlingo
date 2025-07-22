@@ -167,8 +167,12 @@ export default function AdaptiveMathLingo() {
 
         // Count user messages in topic discussion
         const userMsgCount = conversationHistory.filter(msg => msg.role === 'user').length + 1; // +1 for this message
-        // If this is the 3rd user message, respond with 'Ok, let's begin!' and wait for next user message
+        // If this is the 3rd user message, respond with 'Ok, let's begin!' and start the exercise set immediately
         if (userMsgCount === 3) {
+            // Extract topic from conversation history (including this new user message)
+            const topic = extractTopicFromHistory([...conversationHistory, { role: 'user', content: currentMessage }], selectedTopic);
+            setSelectedTopic(topic);
+            setIsDiscussingTopic(false);
             setConversationHistory(prev => [
                 ...prev,
                 { role: 'user', content: currentMessage },
@@ -176,11 +180,16 @@ export default function AdaptiveMathLingo() {
             ]);
             setCurrentMessage("");
             setDiscussionLoading(false);
+            setTimeout(() => {
+                fetchProblem();
+            }, 0);
             return;
         }
-        // If the last assistant message was 'Ok, let's begin!', start the exercise set now
-        if (lastAssistantMsg && lastAssistantMsg.role === 'assistant' && lastAssistantMsg.content.trim().toLowerCase() === "ok, let's begin!") {
-            // Extract topic from conversation history
+        // If the previous assistant message was 'Ok, let's begin!', start the exercise set now
+        const prevMsg = conversationHistory.length > 0 ? conversationHistory[conversationHistory.length - 1] : null;
+        const prevPrevMsg = conversationHistory.length > 1 ? conversationHistory[conversationHistory.length - 2] : null;
+        if (prevPrevMsg && prevPrevMsg.role === 'assistant' && prevPrevMsg.content.trim().toLowerCase() === "ok, let's begin!") {
+            // Extract topic from conversation history (including this new user message)
             const topic = extractTopicFromHistory([...conversationHistory, { role: 'user', content: currentMessage }], selectedTopic);
             setSelectedTopic(topic);
             setIsDiscussingTopic(false);
