@@ -30,6 +30,9 @@ import {
     ThumbsUp,
     ThumbsDown,
 } from "lucide-react";
+// Add imports for GraphingPad and DrawingPad
+import GraphingPad from "./GraphingPad";
+import DrawingPad from "./DrawingPad";
 
 export default function MathLingoDemo() {
     // ----- learner state -----
@@ -57,6 +60,10 @@ export default function MathLingoDemo() {
     const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
     const [startTime, setStartTime] = useState<number | null>(null);
 
+    // Add state for problem type and drawing answer
+    const [problemType, setProblemType] = useState<string | null>(null);
+    const [drawingAnswer, setDrawingAnswer] = useState<string>("");
+
     // fetch first problem on mount
     useEffect(() => {
         if (!problem) fetchProblem();
@@ -74,7 +81,9 @@ export default function MathLingoDemo() {
             const data = await res.json();
             setProblem(data.prompt);
             setProblemId(data.id);
+            setProblemType(data.type || null);
             setAnswer("");
+            setDrawingAnswer("");
             setFeedback(null);
             setAttemptId(null);
             setShowFeedbackUI(false);
@@ -93,10 +102,12 @@ export default function MathLingoDemo() {
         if (!problemId) return;
         setLoading(true);
         try {
+            // For drawing/graphing problems, use drawingAnswer as the answer
+            const userAnswer = (problemType === "graphing" || problemType === "formula_drawing") ? drawingAnswer : answer;
             const res = await fetch("/api/grade", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ id: problemId, learnerAnswer: answer }),
+                body: JSON.stringify({ id: problemId, learnerAnswer: userAnswer }),
             });
             const data = await res.json();
             setFeedback(data);
@@ -117,7 +128,7 @@ export default function MathLingoDemo() {
                 body: JSON.stringify({
                     user_id: null,
                     question_text: problem,
-                    student_answer: answer,
+                    student_answer: userAnswer,
                     llm_answer: data.explanation,
                     time_taken_seconds: timeTaken,
                     points: data.xpGained,
@@ -185,16 +196,39 @@ export default function MathLingoDemo() {
                     {problem ? (
                         <>
                             <p className="text-lg font-medium">{problem}</p>
-                            <Input
-                                placeholder="Your answer"
-                                value={answer}
-                                onChange={(e) => setAnswer(e.target.value)}
-                                disabled={!!feedback}
-                            />
+                            {/* Render input based on problem type */}
+                            {problemType === "graphing" && (
+                                <GraphingPad
+                                    onDrawingChange={setDrawingAnswer}
+                                    disabled={!!feedback}
+                                />
+                            )}
+                            {problemType === "formula_drawing" && (
+                                <DrawingPad
+                                    onDrawingChange={setDrawingAnswer}
+                                    disabled={!!feedback}
+                                />
+                            )}
+                            {(problemType !== "graphing" && problemType !== "formula_drawing") && (
+                                <Input
+                                    placeholder="Your answer"
+                                    value={answer}
+                                    onChange={(e) => setAnswer(e.target.value)}
+                                    disabled={!!feedback}
+                                />
+                            )}
+                            {/* Only show submit button if not feedback and not loading */}
                             {!feedback && (
                                 <Button
                                     onClick={handleSubmit}
-                                    disabled={loading}
+                                    disabled={
+                                        loading ||
+                                        Boolean(
+                                            problemType &&
+                                            (problemType === "graphing" || problemType === "formula_drawing") &&
+                                            !drawingAnswer
+                                        )
+                                    }
                                     className="w-full"
                                 >
                                     {loading ? (
@@ -204,7 +238,7 @@ export default function MathLingoDemo() {
                                     )}
                                 </Button>
                             )}
-
+                            {/* Feedback and rest of UI unchanged */}
                             {feedback && (
                                 <div className="space-y-3">
                                     <div

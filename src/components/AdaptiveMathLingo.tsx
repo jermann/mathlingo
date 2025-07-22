@@ -28,16 +28,16 @@ import GraphingPad from "./GraphingPad";
 import { problemCache } from "@/lib/cache";
 
 const SUGGESTED_TOPICS = [
-    "Basic arithmetic (addition, subtraction, multiplication, division)",
-    "Fractions and decimals",
-    "Algebra and linear equations",
-    "Geometry and shapes",
-    "Word problems and real-world applications",
-    "Mental math and quick calculations",
-    "Patterns and sequences",
-    "Probability and statistics",
-    "Trigonometry basics",
-    "Calculus fundamentals"
+    {
+        label: "Geometry and Shapes",
+        icon: <StarIcon className="w-5 h-5 text-green-400 mr-2" />,
+        value: "Geometry and shapes"
+    },
+    {
+        label: "Calculus",
+        icon: <FlameIcon className="w-5 h-5 text-green-500 mr-2" />,
+        value: "Calculus fundamentals"
+    }
 ];
 
 interface Message {
@@ -51,6 +51,17 @@ interface ProblemHistory {
 }
 
 type QuestionType = 'text' | 'multiple_choice' | 'formula_drawing' | 'graphing';
+
+// Utility: get allowed question types for a topic
+function getAllowedQuestionTypes(topic: string): QuestionType[] {
+    if (!topic) return ['text', 'multiple_choice', 'formula_drawing'];
+    const t = topic.toLowerCase();
+    if (t.includes('calculus') || t.includes('geometry') || t.includes('graph') || t.includes('shapes')) {
+        return ['text', 'multiple_choice', 'formula_drawing', 'graphing'];
+    }
+    // Add more topics as needed
+    return ['text', 'multiple_choice', 'formula_drawing'];
+}
 
 export default function AdaptiveMathLingo() {
     // Topic discussion state
@@ -77,17 +88,20 @@ export default function AdaptiveMathLingo() {
     const [currentDifficulty, setCurrentDifficulty] = useState(3);
     const [problemHistory, setProblemHistory] = useState<ProblemHistory[]>([]);
     const [problemNumber, setProblemNumber] = useState(0);
-    const [totalProblems] = useState(10);
+    const [totalProblems] = useState(6);
 
     // Drawing state
     const [drawingImage, setDrawingImage] = useState<string | null>(null);
     const [imageProcessing, setImageProcessing] = useState(false);
+    const [loadingState, setLoadingState] = useState<null | 'grading' | 'nextQuestion'>(null); // 'grading' or 'nextQuestion' or null
 
     // Gamification state
     const [xp, setXp] = useState(0);
     const [hearts, setHearts] = useState(3);
     const [streak, setStreak] = useState(0);
     const [level, setLevel] = useState(1);
+    // Game over state
+    const [gameOver, setGameOver] = useState(false);
 
     // Attempt and feedback state
     const [attemptId, setAttemptId] = useState<number | null>(null);
@@ -110,6 +124,55 @@ export default function AdaptiveMathLingo() {
 
     const handleTopicMessage = async () => {
         if (!currentMessage.trim()) return;
+        
+        // Check if the last assistant message is a 'let's work on' message
+        const lastAssistantMsg = conversationHistory.length > 0 ? conversationHistory[conversationHistory.length - 1] : null;
+        const letsWorkOnMatch = lastAssistantMsg && lastAssistantMsg.role === 'assistant' && lastAssistantMsg.content.match(/let's work on \"(.+?)\"/i);
+        if (letsWorkOnMatch) {
+            // Extract topic from assistant message if not already set
+            const topic = letsWorkOnMatch[1];
+            if (!selectedTopic) {
+                setSelectedTopic(topic);
+            }
+            setIsDiscussingTopic(false);
+            setConversationHistory(prev => [...prev, { role: 'user', content: currentMessage }]);
+            setCurrentMessage("");
+            setDiscussionLoading(false);
+            // Start the problem set after a short delay to allow state updates
+            setTimeout(() => {
+                fetchProblem();
+            }, 0);
+            return;
+        }
+
+        // Count user messages in topic discussion
+        const userMsgCount = conversationHistory.filter(msg => msg.role === 'user').length + 1; // +1 for this message
+        if (userMsgCount >= 3) {
+            // Try to extract topic from last assistant message
+            let topic = selectedTopic;
+            if (!topic) {
+                const lastAssistant = conversationHistory.slice().reverse().find(msg => msg.role === 'assistant');
+                const match = lastAssistant && lastAssistant.content.match(/(?:let's work on|topic is|problems on) \"?([^"]+)\"?/i);
+                if (match) {
+                    topic = match[1];
+                } else {
+                    topic = currentMessage;
+                }
+            }
+            setSelectedTopic(topic);
+            setIsDiscussingTopic(false);
+            setConversationHistory(prev => [
+                ...prev,
+                { role: 'user', content: currentMessage },
+                { role: 'assistant', content: `Great! Let's get started on "${topic}". I'll generate 10 problems for you.` }
+            ]);
+            setCurrentMessage("");
+            setDiscussionLoading(false);
+            setTimeout(() => {
+                fetchProblem();
+            }, 0);
+            return;
+        }
         
         const userMessage = { role: 'user' as const, content: currentMessage };
         setConversationHistory(prev => [...prev, userMessage]);
@@ -160,13 +223,15 @@ export default function AdaptiveMathLingo() {
     const fetchProblem = async () => {
         setLoading(true);
         try {
+            const allowedQuestionTypes = getAllowedQuestionTypes(selectedTopic);
             const res = await fetch("/api/problem", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ 
                     topic: selectedTopic,
                     difficulty: currentDifficulty,
-                    problemHistory: problemHistory
+                    problemHistory: problemHistory,
+                    allowedQuestionTypes // NEW: pass allowed types
                 }),
             });
             const data = await res.json();
@@ -206,30 +271,23 @@ export default function AdaptiveMathLingo() {
     };
 
     const processDrawing = async (imageData: string) => {
-        if (!imageData) return;
-
+        if (!imageData) return "";
         setImageProcessing(true);
-        
         try {
-            // Convert base64 to blob
             const response = await fetch(imageData);
             const blob = await response.blob();
-            
             const formData = new FormData();
             formData.append('image', blob, 'drawing.png');
             formData.append('questionType', questionType);
-
             const res = await fetch("/api/solve", {
                 method: "POST",
                 body: formData,
             });
             const data = await res.json();
-            
-            if (data.extractedText) {
-                setAnswer(data.extractedText);
-            }
+            return data.extractedText || "";
         } catch (e) {
             console.error('Error processing drawing:', e);
+            return "";
         } finally {
             setImageProcessing(false);
         }
@@ -238,21 +296,23 @@ export default function AdaptiveMathLingo() {
     const handleSubmit = async () => {
         if (!problemId) return;
         setLoading(true);
-        
+        setLoadingState('grading');
         let submissionAnswer = "";
-        if (questionType === 'multiple_choice') {
-            submissionAnswer = selectedOption; // selectedOption should be A, B, or C
-        } else {
-            submissionAnswer = answer;
+        let processedAnswer = answer;
+        // If drawing/graphing, process image on submit
+        if ((questionType === 'formula_drawing' || questionType === 'graphing') && drawingImage) {
+            processedAnswer = await processDrawing(drawingImage);
+            setAnswer(processedAnswer); // update input with extracted text
         }
-
+        if (questionType === 'multiple_choice') {
+            submissionAnswer = selectedOption;
+        } else {
+            submissionAnswer = processedAnswer;
+        }
         try {
-            // Get the current problem from cache, with frontend state as fallback
             const currentProblem = problemCache.get(problemId);
             let problemToSubmit;
-            
             if (!currentProblem) {
-                // If problem not found in cache, use frontend state or create fallback
                 problemToSubmit = currentProblemData || {
                     prompt: problem || "What is 2 + 2?",
                     answer: "4",
@@ -263,7 +323,6 @@ export default function AdaptiveMathLingo() {
             } else {
                 problemToSubmit = currentProblem;
             }
-
             const res = await fetch("/api/solve", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -274,33 +333,30 @@ export default function AdaptiveMathLingo() {
                 }),
             });
             const data = await res.json();
-            
-            // Convert the new response format to the expected feedback format
             const feedbackData = {
                 correct: data.isCorrect,
                 explanation: data.feedback || (data.isCorrect ? "Correct!" : "Incorrect."),
                 xpGained: data.isCorrect ? 10 : 0
             };
-            
             setFeedback(feedbackData);
-            
-            // Update problem history for adaptive difficulty
             setProblemHistory(prev => [...prev, {
                 correct: data.isCorrect,
                 difficulty: currentDifficulty
             }]);
-            
-            // Update gamified state
             if (data.isCorrect) {
                 setXp((x) => x + feedbackData.xpGained);
                 setStreak((s) => s + 1);
                 if ((xp + feedbackData.xpGained) / 100 >= level) setLevel((l) => l + 1);
             } else {
-                setHearts((h) => Math.max(h - 1, 0));
+                setHearts((h) => {
+                    const newHearts = Math.max(h - 1, 0);
+                    if (newHearts === 0) {
+                        setGameOver(true);
+                    }
+                    return newHearts;
+                });
                 setStreak(0);
             }
-
-            // Store attempt in DB
             const timeTaken = startTime ? Math.round((Date.now() - startTime) / 1000) : null;
             const attemptRes = await fetch("/api/attempt", {
                 method: "POST",
@@ -328,6 +384,7 @@ export default function AdaptiveMathLingo() {
             });
         } finally {
             setLoading(false);
+            setLoadingState(null);
         }
     };
 
@@ -359,6 +416,7 @@ export default function AdaptiveMathLingo() {
     };
 
     const nextProblem = () => {
+        setLoadingState('nextQuestion');
         if (problemNumber >= totalProblems) {
             // Problem set complete
             setIsDiscussingTopic(true);
@@ -369,13 +427,55 @@ export default function AdaptiveMathLingo() {
                 role: 'assistant',
                 content: "Great job completing the problem set! Would you like to try a different topic or work on more problems in the same area?"
             }]);
+            setLoadingState(null);
         } else {
-            fetchProblem();
+            fetchProblem().then(() => setLoadingState(null));
         }
         setShowFeedbackUI(false);
         setThumbs(null);
         setComment("");
         setFeedbackSubmitted(false);
+    };
+
+    // Game Over handler
+    const handleRestart = () => {
+        setGameOver(false);
+        setIsDiscussingTopic(true);
+        setConversationHistory([
+            {
+                role: 'assistant',
+                content: "Hi! I'm here to help you choose what math problems to work on. What kind of math topics interest you? You can tell me about subjects you enjoy, things you find challenging, or areas you'd like to improve in!"
+            }
+        ]);
+        setCurrentMessage("");
+        setDiscussionLoading(false);
+        setSelectedTopic("");
+        setProblem(null);
+        setProblemId(null);
+        setQuestionType('text');
+        setAnswer("");
+        setSelectedOption("");
+        setOptions([]);
+        setCurrentProblemData(null);
+        setFeedback(null);
+        setLoading(false);
+        setCurrentDifficulty(3);
+        setProblemHistory([]);
+        setProblemNumber(0);
+        setDrawingImage(null);
+        setImageProcessing(false);
+        setLoadingState(null);
+        setXp(0);
+        setHearts(3);
+        setStreak(0);
+        setLevel(1);
+        setAttemptId(null);
+        setShowFeedbackUI(false);
+        setThumbs(null);
+        setComment("");
+        setFeedbackSubmitted(false);
+        setStartTime(null);
+        setFeedbackError(null);
     };
 
     const heartsDisplay = Array.from({ length: 3 }).map((_, i) => (
@@ -412,7 +512,7 @@ export default function AdaptiveMathLingo() {
                         value={answer}
                         onChange={(e) => setAnswer(e.target.value)}
                         onKeyPress={(e) => e.key === 'Enter' && !feedback && handleSubmit()}
-                        disabled={!!feedback}
+                        disabled={!!feedback || loadingState !== null}
                     />
                 );
             case 'multiple_choice':
@@ -426,7 +526,7 @@ export default function AdaptiveMathLingo() {
                                     variant={selectedOption === letter ? "default" : "outline"}
                                     className="w-full justify-start"
                                     onClick={() => setSelectedOption(letter)}
-                                    disabled={!!feedback}
+                                    disabled={!!feedback || loadingState !== null}
                                 >
                                     <span className="font-bold mr-2">{letter}.</span>
                                     {option}
@@ -441,12 +541,9 @@ export default function AdaptiveMathLingo() {
                         <DrawingPad
                             onDrawingChange={(imageData) => {
                                 setDrawingImage(imageData);
-                                if (imageData) {
-                                    // Process the drawing immediately
-                                    processDrawing(imageData);
-                                }
+                                // No auto-processing here
                             }}
-                            disabled={!!feedback}
+                            disabled={!!feedback || loadingState !== null}
                         />
                         {imageProcessing && (
                             <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -459,7 +556,7 @@ export default function AdaptiveMathLingo() {
                             value={answer}
                             onChange={(e) => setAnswer(e.target.value)}
                             onKeyPress={(e) => e.key === 'Enter' && !feedback && handleSubmit()}
-                            disabled={!!feedback}
+                            disabled={!!feedback || loadingState !== null}
                         />
                     </div>
                 );
@@ -469,12 +566,9 @@ export default function AdaptiveMathLingo() {
                         <GraphingPad
                             onDrawingChange={(imageData) => {
                                 setDrawingImage(imageData);
-                                if (imageData) {
-                                    // Process the drawing immediately
-                                    processDrawing(imageData);
-                                }
+                                // No auto-processing here
                             }}
-                            disabled={!!feedback}
+                            disabled={!!feedback || loadingState !== null}
                         />
                         {imageProcessing && (
                             <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -487,7 +581,7 @@ export default function AdaptiveMathLingo() {
                             value={answer}
                             onChange={(e) => setAnswer(e.target.value)}
                             onKeyPress={(e) => e.key === 'Enter' && !feedback && handleSubmit()}
-                            disabled={!!feedback}
+                            disabled={!!feedback || loadingState !== null}
                         />
                     </div>
                 );
@@ -496,32 +590,84 @@ export default function AdaptiveMathLingo() {
         }
     };
 
-    if (isDiscussingTopic) {
+    if (gameOver || problemNumber >= totalProblems) {
+        // If hearts are 0, show hearts game over, else show completion game over
+        const outOfHearts = hearts === 0;
         return (
-            <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-green-50 to-white p-4">
-                <Card className="w-full max-w-2xl rounded-2xl shadow-2xl">
+            <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-red-100 via-yellow-50 to-blue-100 p-4">
+                <Card className="w-full max-w-2xl rounded-3xl shadow-2xl border-4 border-dashed border-red-300">
                     <CardHeader className="space-y-2 text-center">
-                        <CardTitle className="text-3xl font-bold flex items-center justify-center gap-2">
-                            <MessageCircle className="w-8 h-8" />
-                            MathLingo Topic Discussion
+                        <CardTitle className={`text-4xl font-extrabold flex items-center justify-center gap-3 ${outOfHearts ? 'text-red-600' : 'text-green-600'} drop-shadow`}>
+                            <HeartIcon className={`w-10 h-10 ${outOfHearts ? 'text-red-400' : 'text-green-400'} animate-bounce`} />
+                            Game Over
                         </CardTitle>
-                        <div className="text-sm text-gray-500">
-                            Let's find the perfect math problems for you!
+                        <div className="text-base text-gray-700 font-semibold flex flex-col items-center justify-center">
+                            <span className="mb-2">{outOfHearts ? '💔' : '🎉'}</span>
+                            <span className="max-w-xl mx-auto text-center">
+                                {outOfHearts
+                                    ? "You've run out of hearts!"
+                                    : "You've completed all the questions!"}
+                                <br/>Here are your stats for this run:
+                            </span>
                         </div>
                     </CardHeader>
-                    <CardContent className="space-y-4">
+                    <CardContent className="space-y-6">
+                        <div className="flex flex-col items-center gap-4 text-lg font-semibold">
+                            <div className="flex items-center gap-2">
+                                <StarIcon className="w-6 h-6 text-yellow-500" /> XP: {xp}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <FlameIcon className="w-6 h-6 text-orange-500" /> Streak: {streak}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-blue-600 font-bold">Level: {level}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-green-600 font-bold">Problems Solved: {problemNumber}</span>
+                            </div>
+                        </div>
+                        <Button 
+                            onClick={handleRestart}
+                            className="w-full mt-4 rounded-2xl bg-green-400 hover:bg-green-500 text-white text-xl font-bold shadow-lg animate-pulse"
+                            size="lg"
+                        >
+                            <Target className="w-5 h-5 mr-2" />
+                            Start Again
+                        </Button>
+                        <div className="text-center text-gray-500 text-sm">Choose a topic or enter what to practice next!</div>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+
+    if (isDiscussingTopic) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-green-100 via-yellow-50 to-blue-100 p-4">
+                <Card className="w-full max-w-2xl rounded-3xl shadow-2xl border-4 border-dashed border-green-200">
+                    <CardHeader className="space-y-2 text-center">
+                        <CardTitle className="text-4xl font-extrabold flex items-center justify-center gap-3 text-green-600 drop-shadow">
+                            <MessageCircle className="w-10 h-10 text-blue-400 animate-bounce" />
+                            MathLingo
+                        </CardTitle>
+                        <div className="text-base text-gray-700 font-semibold flex flex-col items-center justify-center">
+                            <span className="mb-2">🎉</span>
+                            <span className="max-w-xl mx-auto text-center">Hi! I'm here to help you choose what math problems to work on.<br/>What kind of math topics interest you? You can tell me about subjects you enjoy, things you find challenging, or areas you'd like to improve in!</span>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
                         {/* Conversation History */}
-                        <div className="max-h-96 overflow-y-auto space-y-3 p-4 bg-gray-50 rounded-lg">
+                        <div className="max-h-80 overflow-y-auto space-y-3 p-4 bg-white/70 rounded-lg border border-blue-100 shadow-inner">
                             {conversationHistory.map((msg, idx) => (
                                 <div
                                     key={idx}
                                     className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                                 >
                                     <div
-                                        className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                                        className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl font-medium shadow-md transition-all duration-200 ${
                                             msg.role === 'user'
-                                                ? 'bg-blue-500 text-white'
-                                                : 'bg-white border border-gray-200'
+                                                ? 'bg-blue-400 text-white border-2 border-blue-300'
+                                                : 'bg-green-100 text-green-700 border-2 border-green-200'
                                         }`}
                                     >
                                         {msg.content}
@@ -530,25 +676,27 @@ export default function AdaptiveMathLingo() {
                             ))}
                             {discussionLoading && (
                                 <div className="flex justify-start">
-                                    <div className="bg-white border border-gray-200 px-4 py-2 rounded-lg">
-                                        <Loader2 className="animate-spin w-4 h-4" />
+                                    <div className="bg-green-100 border border-green-200 px-4 py-2 rounded-2xl">
+                                        <Loader2 className="animate-spin w-4 h-4 text-green-400" />
                                     </div>
                                 </div>
                             )}
                         </div>
 
                         {/* Message Input */}
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 items-center">
                             <Input
                                 placeholder="Tell me about your math interests..."
                                 value={currentMessage}
                                 onChange={(e) => setCurrentMessage(e.target.value)}
                                 onKeyPress={(e) => e.key === 'Enter' && handleTopicMessage()}
                                 disabled={discussionLoading}
+                                className="rounded-xl border-2 border-blue-200 focus:ring-green-200"
                             />
                             <Button
                                 onClick={handleTopicMessage}
                                 disabled={discussionLoading || !currentMessage.trim()}
+                                className="rounded-xl bg-green-400 hover:bg-green-500 text-white font-bold shadow"
                             >
                                 {discussionLoading ? (
                                     <Loader2 className="animate-spin" />
@@ -560,20 +708,21 @@ export default function AdaptiveMathLingo() {
 
                         {/* Suggested Topics */}
                         <div className="space-y-2">
-                            <div className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                                <BookOpen className="w-4 h-4" />
-                                Or choose from these popular topics:
+                            <div className="text-base font-bold text-gray-700 flex items-center gap-2 justify-center">
+                                <BookOpen className="w-5 h-5 text-blue-400" />
+                                Or choose a topic to get started:
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <div className="flex flex-col md:flex-row gap-4 justify-center items-center mt-2">
                                 {SUGGESTED_TOPICS.map((topic, idx) => (
                                     <Button
                                         key={idx}
                                         variant="outline"
-                                        size="sm"
-                                        onClick={() => selectSuggestedTopic(topic)}
-                                        className="text-left justify-start h-auto p-3"
+                                        size="lg"
+                                        onClick={() => selectSuggestedTopic(topic.value)}
+                                        className="flex items-center gap-2 px-6 py-4 rounded-2xl border-2 border-green-200 bg-white hover:bg-green-50 text-lg font-semibold shadow-md transition-all duration-200 hover:scale-105"
                                     >
-                                        {topic}
+                                        {topic.icon}
+                                        {topic.label}
                                     </Button>
                                 ))}
                             </div>
@@ -583,10 +732,10 @@ export default function AdaptiveMathLingo() {
                         {selectedTopic && (
                             <Button 
                                 onClick={startProblemSet}
-                                className="w-full"
+                                className="w-full mt-4 rounded-2xl bg-blue-400 hover:bg-blue-500 text-white text-xl font-bold shadow-lg animate-pulse"
                                 size="lg"
                             >
-                                <Target className="w-4 h-4 mr-2" />
+                                <Target className="w-5 h-5 mr-2" />
                                 Start 10 Problems on "{selectedTopic}"
                             </Button>
                         )}
@@ -626,23 +775,31 @@ export default function AdaptiveMathLingo() {
                     {problem ? (
                         <>
                             <p className="text-lg font-medium">{problem}</p>
-                            
                             {renderQuestionInput()}
-                            
                             {!feedback && (
                                 <Button
                                     onClick={handleSubmit}
-                                    disabled={loading || (questionType === 'multiple_choice' && !selectedOption) || (questionType === 'text' && !answer.trim()) || ((questionType === 'formula_drawing' || questionType === 'graphing') && !answer.trim())}
+                                    disabled={loadingState !== null || (questionType === 'multiple_choice' && !selectedOption) || (questionType === 'text' && !answer.trim()) || ((questionType === 'formula_drawing' || questionType === 'graphing') && !drawingImage)}
                                     className="w-full"
                                 >
-                                    {loading ? (
+                                    {loadingState === 'grading' ? (
                                         <Loader2 className="animate-spin" />
                                     ) : (
                                         "Submit"
                                     )}
                                 </Button>
                             )}
-
+                            {/* Loading overlays/messages */}
+                            {loadingState === 'grading' && (
+                                <div className="flex items-center justify-center gap-2 text-blue-500 font-semibold mt-2 animate-pulse">
+                                    <Loader2 className="animate-spin w-4 h-4" /> Grading answer...
+                                </div>
+                            )}
+                            {loadingState === 'nextQuestion' && (
+                                <div className="flex items-center justify-center gap-2 text-blue-500 font-semibold mt-2 animate-pulse">
+                                    <Loader2 className="animate-spin w-4 h-4" /> Loading next question...
+                                </div>
+                            )}
                             {feedback && (
                                 <div className="space-y-3">
                                     <div
@@ -697,7 +854,7 @@ export default function AdaptiveMathLingo() {
                                     {feedbackSubmitted && (
                                         <div className="text-green-600 text-sm font-medium">Thank you for your feedback!</div>
                                     )}
-                                    <Button className="w-full" onClick={nextProblem}>
+                                    <Button className="w-full" onClick={nextProblem} disabled={loadingState !== null}>
                                         {problemNumber >= totalProblems ? "Complete Set ✓" : "Next ➜"}
                                     </Button>
                                 </div>
