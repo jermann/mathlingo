@@ -61,11 +61,31 @@ An adaptive math learning platform that generates personalized math problems and
 
 ## Technology Stack
 
-- **Frontend**: Next.js 15, React 19, TypeScript
-- **UI**: Tailwind CSS, Radix UI components, Lucide React icons
-- **AI**: Anthropic Claude 3.7 Sonnet for problem generation and image processing
+- **Frontend**: Next.js 15.3.5, React 19, TypeScript
+- **UI**: Tailwind CSS 4, Radix UI components, Lucide React icons
+- **AI**: Anthropic Claude 3.7 Sonnet (via @anthropic-ai/sdk 0.56.0) for problem generation and image processing
 - **Backend**: Next.js API routes with enhanced in-memory caching
 - **Drawing**: HTML5 Canvas with custom drawing interfaces
+- **Database**: PostgreSQL (local, see setup below)
+- **Other**: OpenAI SDK, ioredis, dotenv
+
+## Project Structure
+
+```
+mathlingo-demo/
+  ├── src/
+  │   ├── app/                # Next.js app directory (API routes, pages, layout)
+  │   ├── components/         # React components (UI, drawing, etc.)
+  │   └── lib/                # Database, cache, and utility scripts
+  ├── public/                 # Static assets
+  ├── package.json            # Scripts and dependencies
+  ├── README.md               # This file
+  └── ...
+```
+
+## Node.js Version
+
+- Requires **Node.js v18+** (recommended: latest LTS)
 
 ## Getting Started
 
@@ -84,15 +104,28 @@ An adaptive math learning platform that generates personalized math problems and
    Create a `.env.local` file:
    ```env
    ANTHROPIC_API_KEY=your_anthropic_api_key_here
+   DATABASE_URL=postgresql://localhost:5432/mathlingo_demo
    ```
+   - The Anthropic API key is required for AI-powered features (problem generation, grading, OCR).
+   - The database URL is required for local data persistence.
 
 4. **Run the development server**
    ```bash
    npm run dev
    ```
+   - The app runs on [http://localhost:3001](http://localhost:3001) by default (see package.json).
 
 5. **Open your browser**
    Navigate to `http://localhost:3001`
+
+## Available Scripts
+
+- `npm run dev` — Start the development server (Next.js, port 3001)
+- `npm run build` — Build the app for production
+- `npm run start` — Start the production server
+- `npm run lint` — Run ESLint
+- `npm run db:setup` — Create/migrate database tables (`src/lib/db-setup.ts`)
+- `npm run db:reset` — Drop and recreate all tables (`src/lib/db-reset.ts`)
 
 ## API Endpoints
 
@@ -278,6 +311,8 @@ MIT License - see LICENSE file for details.
 
 - If you see errors about a missing database (e.g. `database "alexander" does not exist`), make sure your `.env.local` is present and correct, and re-run the setup script.
 - If you change your database name, update `.env.local` and re-run the setup/reset scripts.
+- If you see errors about missing Anthropic API key, ensure your `.env.local` contains a valid `ANTHROPIC_API_KEY`.
+- For Node.js version issues, ensure you are running Node.js v18 or newer.
 
 ## Testing
 
