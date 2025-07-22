@@ -11,21 +11,21 @@ An adaptive math learning platform that generates personalized math problems and
 3. **Formula Drawing Questions** - Students draw mathematical expressions on an interactive canvas
 4. **Graphing Questions** - Students draw graphs on a coordinate plane with gridlines and numbered axes
 
-### 🧠 Adaptive Learning
+### Adaptive Learning
 
 - **Smart difficulty adjustment** based on student performance
 - **Problem history tracking** to personalize future questions
 - **Gamified experience** with XP, hearts, streaks, and levels
 - **Topic-based learning** with AI-powered conversation
 
-### 🎨 Interactive Drawing Interfaces
+### Interactive Drawing Interfaces
 
 - **DrawingPad**: Canvas-based interface for mathematical formulas
 - **GraphingPad**: Enhanced coordinate plane with gridlines and numbered axes
 - **Real-time processing**: AI-powered OCR for immediate feedback
 - **Editable results**: Students can edit AI-extracted text before submitting
 
-### 🤖 AI-Powered Features
+### AI-Powered Features
 
 - **Claude Vision**: Advanced image processing for handwritten math
 - **Intelligent grading**: Context-aware feedback for all question types
@@ -187,19 +187,19 @@ Legacy endpoint for basic grading - now superseded by `/api/solve`.
 
 ## Enhanced Features
 
-### 🛡️ Robust Error Handling
+### Robust Error Handling
 - **JSON parsing fallbacks** for malformed AI responses
 - **Cache miss protection** with multiple fallback levels
 - **Graceful degradation** - app never crashes, always provides working problems
 - **Comprehensive logging** for debugging and monitoring
 
-### 💾 Smart Caching
+### Smart Caching
 - **Timestamp-based cache** with automatic cleanup
 - **Frontend state backup** for reliability
 - **Memory leak prevention** with 30-minute cache expiration
 - **Multiple fallback mechanisms** ensure data persistence
 
-### 🎯 Question Type Distribution
+### Question Type Distribution
 - **Random selection** from four question types
 - **Topic-appropriate prompts** for each type
 - **Difficulty scaling** across all question types
