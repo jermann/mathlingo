@@ -2,7 +2,11 @@
 
 An adaptive math learning platform that generates personalized math problems and provides instant feedback. Features four different question types with AI-powered grading and interactive drawing interfaces!
 
----
+## Example Screenshots
+
+|  Home Screen | Graphing Question | Text Input Question |
+|:----------------:|:-----------:|:-------------------:|
+| ![Home Example](img/home.png) | ![Graphing Example](img/graphing.png) | ![Question Example](img/question.png) |
 
 ## Features
 
@@ -33,12 +37,6 @@ An adaptive math learning platform that generates personalized math problems and
 - **Intelligent grading**: Context-aware feedback for all question types
 - **Structured responses**: Reliable JSON parsing with fallback handling
 - **Topic discussion**: AI conversation to understand student interests
-
-## Example Screenshots
-
-|  Home Screen | Graphing Question | Text Input Question |
-|:----------------:|:-----------:|:-------------------:|
-| ![Home Example](img/home.png) | ![Graphing Example](img/graphing.png) | ![Question Example](img/question.png) |
 
 
 ## Question Types in Detail
