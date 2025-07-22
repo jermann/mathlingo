@@ -4,7 +4,7 @@ An adaptive math learning platform that generates personalized math problems and
 
 ## Features
 
-### 🎯 Four Question Types
+### Four Question Types
 
 1. **Text Input Questions** - Traditional problems where students type their answers
 2. **Multiple Choice Questions** - Students select from 3 possible answers (A, B, C)
